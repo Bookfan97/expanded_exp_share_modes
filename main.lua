@@ -61,6 +61,68 @@ local function planFor(mode, ctx)
   return batch
 end
 
+-- Classic Even Split only: every living member gets the same share, so the
+-- active battler (when it survived) keeps its own "gained" line and the
+-- rest collapse into one summary.  even/modern pay fighters and bench
+-- different amounts and keep the per-mon lines.
+local function summaryLine(amount)
+  return "The rest of your party each received "
+    .. (tonumber(amount) or 0) .. " EXP. Points!"
+end
+
+local function expOf(mon, gen2)
+  return gen2 and (mon.experience or 0) or (mon.exp or 0)
+end
+
+local function classicDistribute(ctx, applyShare, batch)
+  local battle = ctx.battle
+  local gen2 = not battle.game
+  local active = battle.player and (battle.player.mon or battle.player)
+  local split = #batch
+
+  if gen2 then
+    local activeIndex
+    for index, candidate in ipairs(battle.party or {}) do
+      if candidate == active then activeIndex = index break end
+    end
+    -- giveExperiencePass emits the "gained" text per mon with no kill
+    -- switch, so prune every experience event we added except the active
+    -- battler's and emit the summary message in its place.
+    local prev = #battle.events
+    local amount, activeEvent
+    for _, share in ipairs(batch) do applyShare(share[1], split, true) end
+    for i = prev + 1, #battle.events do
+      local ev = battle.events[i]
+      if ev.kind == "experience" then
+        amount = amount or ev.amount
+        if not activeEvent and activeIndex and ev.index == activeIndex then
+          activeEvent = i
+        end
+      end
+    end
+    for i = #battle.events, prev + 1, -1 do
+      local ev = battle.events[i]
+      if ev.kind == "experience" and i ~= activeEvent then
+        table.remove(battle.events, i)
+      end
+    end
+    battle:emit({ kind = "message", text = summaryLine(amount) })
+    return
+  end
+
+  local key = active
+  local inBatch = false
+  for _, share in ipairs(batch) do
+    if share[1] == key then inBatch = true break end
+  end
+  if not inBatch then key = batch[1][1] end
+  local before = expOf(key, false)
+  for _, share in ipairs(batch) do
+    applyShare(share[1], split, share[1] == active)
+  end
+  battle:sayNext(summaryLine(expOf(key, false) - before))
+end
+
 local function modeOf(mod)
   local mode = tostring(mod.options:get("mode") or "classic")
   if mode == "off" or mode == "classic" or mode == "modern" or mode == "even" then
@@ -119,6 +181,10 @@ return function(mod)
 
     local applyShare = applyShareFor(ctx)
     local applied = pcall(function()
+      if mode == "classic" then
+        classicDistribute(ctx, applyShare, batch)
+        return
+      end
       for _, share in ipairs(batch) do
         -- `true` announce: Gen 1's applyShare only prints the "gained N EXP.
         -- Points!" line when this is set; Gen 2 ignores it.
