@@ -1,7 +1,7 @@
 {
   "id": "expanded_exp_share_modes",
   "name": "Expanded EXP Share Modes",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "api": 2,
   "entry": "main.lua",
   "profile": "content",
@@ -9,11 +9,9 @@
   "game_version": ">=0.0.0-0 <2.0.0",
   "priority": 140,
   "affects_link": false,
-  "permissions": [
-    "engine_internals"
-  ],
+  "permissions": [],
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],
-  "description": "Adds selectable Off, Classic Even Split, Modern Progressive, and Even Split EXP sharing modes."
+  "description": "Adds selectable Off, Classic Even Split, Modern Progressive, and Even Split EXP sharing modes for Red/Blue/Yellow and Gold/Silver/Crystal."
 }
