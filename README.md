@@ -2,7 +2,9 @@ Forked From: https://github.com/FAFF0x/gen1recomp/blob/main/exp_share_modes_v1.0
 
 # EXP Share Modes
 
-A configurable EXP distribution mod for Gen1Recomp.
+A configurable EXP distribution mod for Gen1Recomp. Works on Red/Blue/Yellow
+and Gold/Silver/Crystal: the distribution sits on the shared `battle.exp_award`
+hook, so the same rules run on every generation.
 
 ## Modes
 
@@ -28,11 +30,14 @@ The selected mode is used for every Pokémon defeated after the restart.
 
 ## Compatibility
 
-The mod temporarily ignores the vanilla EXP.ALL item so its own selected rule
-is the only distribution rule applied. It does not change encounter EXP values,
-trainer bonuses, traded-Pokémon bonuses, level caps, learnsets, or evolution
-requirements.
+The mod replaces the vanilla EXP award (the participant/EXP.ALL split on
+Red/Blue/Yellow and the participant/EXP.SHARE split on Gold/Silver/Crystal)
+with its own selected rule. The vanilla passes are never run, so the EXP.ALL
+item and the held EXP.SHARE item do not alter any mode's pool. It does not
+change encounter EXP values, trainer bonuses, traded-Pokémon bonuses, level
+caps, learnsets, or evolution requirements.
 
-This mod uses the `engine_internals` permission to wrap the battle EXP
-recipient routine while preserving the engine's normal messages, level-up
-screens, move learning, happiness changes, stat EXP and post-battle flow.
+This mod uses only the standard mod API (`mod.options` and the
+`battle.exp_award` hook) and needs no `engine_internals` permission. The
+engine's own award flow still drives the messages, level-up screens, move
+learning, happiness, stat EXP, and post-battle flow.
