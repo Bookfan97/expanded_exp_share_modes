@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1
+- Classic Even Split: collapsed the per-member EXP lines into one summary,
+  keeping the active battler's own "gained" line and a single
+  "The rest of your party each received N EXP. Points!" line for the bench.
+
 ## 1.2.0
 - Ported distribution onto the cross-generation `battle.exp_award` hook:
   works on Red/Blue/Yellow and Gold/Silver/Crystal.
