@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2
+- Declared `games: ["gen1", "gen2"]` in manifest.json. Per the modkit's
+  Gen 2 compatibility rules, omitting `games` means Gen 1 only, so the
+  loader would have refused to run this mod on Gold/Silver/Crystal despite
+  `battle.exp_award` already handling both generations.
+
 ## 1.2.1
 - Classic Even Split: collapsed the per-member EXP lines into one summary,
   keeping the active battler's own "gained" line and a single
