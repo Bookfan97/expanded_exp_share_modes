@@ -1,13 +1,17 @@
 -- EXP Share Modes for Gen1Recomp.
 -- Adds four configurable battle EXP distribution rules.
 --
--- One battle.exp_award hook serves every generation the engine compiles: it is
--- raised with the same ctx on Red/Blue/Yellow (src/battle/BattleState.lua
--- awardExp) and on Gold/Silver/Crystal (src/battle/gen2/Battle.lua
--- awardExperience).  ctx.applyShare(mon, split) pays a single mon through the
--- engine's own award flow -- message, level-up stats window, move learning,
--- happiness, battle.exp_gained -- so the distribution rules below carry no
--- generation-specific internals.
+-- Gen 1 and Gen 2 share the battle.exp_award hook: it is raised with the same
+-- ctx on Red/Blue/Yellow (src/battle/BattleState.lua awardExp) and on
+-- Gold/Silver/Crystal (src/battle/gen2/Battle.lua awardExperience).
+-- ctx.applyShare(mon, split) pays a single mon through the engine's own award
+-- flow -- message, level-up stats window, move learning, happiness,
+-- battle.exp_gained -- so the distribution rules carry no generation-specific
+-- internals there.
+--
+-- Gen 3 (FireRed/LeafGreen/Ruby/Sapphire/Emerald) uses a per-recipient
+-- exp.gain hook instead, so this mod wraps that hook on Gen 3 boots and
+-- returns the adjusted amount for each eligible mon.
 
 local function partyOf(battle)
   if battle.game and battle.game.save and battle.game.save.party then
@@ -131,6 +135,11 @@ local function modeOf(mod)
   return "classic"
 end
 
+-- Gen 3 detection: the loader exposes the current generation on mod.generation.
+local function isGen3(mod)
+  return tonumber(mod.generation) == 3
+end
+
 -- Gen 2's ctx.applyShare bakes in `halved` (true whenever anyone holds
 -- EXP.SHARE), so its pool is taxed before our split runs.  Pay through the
 -- engine's own pass with halved=false so the item never alters the pool --
@@ -149,6 +158,89 @@ local function applyShareFor(ctx)
       end
     end
   end
+end
+
+-- ---------------------------------------------------------------------------
+-- Gen 3 support (FireRed/LeafGreen/Ruby/Sapphire/Emerald)
+-- Gen 3 raises exp.gain per eligible recipient instead of battle.exp_award.
+-- The engine only calls the hook for participants and EXP.SHARE holders, so
+-- modes apply within that set; the pool itself is not taxed by EXP.SHARE.
+-- ---------------------------------------------------------------------------
+
+local function livingPartyG3(battle)
+  local out = {}
+  local party = battle and battle.playerParty or {}
+  for i = 1, 6 do
+    local mon = party[i]
+    if mon and not mon.isEgg and (tonumber(mon.hp) or 0) > 0 then
+      out[#out + 1] = mon
+    end
+  end
+  return out
+end
+
+local function partyIndexOfG3(battle, mon)
+  local party = battle and battle.playerParty or {}
+  for i = 1, 6 do
+    if party[i] == mon then return i end
+  end
+  return nil
+end
+
+local function isParticipantG3(ctx)
+  local parts = ctx.loser and ctx.loser.participants
+  return type(parts) == "table" and parts[ctx.index] == true
+end
+
+local function fullPoolG3(ctx)
+  local yield = tonumber(ctx.defeatedDef and ctx.defeatedDef.expYield) or 0
+  local level = math.max(1, tonumber(ctx.level) or 1)
+  return math.max(0, math.floor(yield * level / 7))
+end
+
+local function divideFloorPositive(num, denom)
+  if num <= 0 then return 0 end
+  denom = math.max(1, denom)
+  return math.max(1, math.floor(num / denom))
+end
+
+local function baseAmountForModeG3(mode, ctx)
+  local full = fullPoolG3(ctx)
+  local participant = isParticipantG3(ctx)
+  local participants = math.max(1, tonumber(ctx.participants) or 1)
+  local living = livingPartyG3(ctx.battle)
+  local livingCount = math.max(1, #living)
+
+  local benchCount = 0
+  for _, mon in ipairs(living) do
+    local pi = partyIndexOfG3(ctx.battle, mon)
+    local isPart = pi and ctx.loser and ctx.loser.participants and ctx.loser.participants[pi] == true
+    if not isPart then benchCount = benchCount + 1 end
+  end
+  benchCount = math.max(1, benchCount)
+
+  if mode == "off" then
+    return participant and divideFloorPositive(full, participants) or 0
+  elseif mode == "classic" then
+    return divideFloorPositive(full, livingCount)
+  elseif mode == "even" then
+    return participant and divideFloorPositive(full, participants) or full
+  else -- "modern"
+    return participant and divideFloorPositive(full, participants)
+      or divideFloorPositive(full, benchCount * 2)
+  end
+end
+
+local function applyPerMonBoostsG3(amount, ctx)
+  if amount <= 0 then return 0 end
+  if ctx.luckyEgg then amount = math.floor(amount * 150 / 100) end
+  if ctx.isTrainer then amount = math.floor(amount * 150 / 100) end
+  if ctx.traded then amount = math.floor(amount * 150 / 100) end
+  return math.max(1, amount)
+end
+
+local function amountForModeG3(mode, ctx)
+  return applyPerMonBoostsG3(baseAmountForModeG3(mode, ctx), ctx)
 end
 
 return function(mod)
@@ -196,6 +288,26 @@ return function(mod)
       mod.log:warn("EXP Share Modes award failed partway; leaving award as applied")
     end
   end)
+
+  -- Gen 3 uses a per-recipient exp.gain hook.  Register it only on Gen 3
+  -- boots so it does not double-award on Gen 1/2, where battle.exp_award
+  -- already handles distribution.
+  if isGen3(mod) then
+    mod.hooks:wrap("exp.gain", function(next, ctx)
+      if not (ctx and ctx.mon and ctx.index and ctx.battle) then
+        return next(ctx)
+      end
+
+      local mode = modeOf(mod)
+      local ok, amount = pcall(amountForModeG3, mode, ctx)
+      if not ok then
+        mod.log:warn("EXP Share Modes Gen 3 amount failed (%s); using vanilla amount",
+          tostring(amount))
+        return next(ctx)
+      end
+      return amount
+    end)
+  end
 
   mod.log:info("EXP Share Modes loaded (default: Classic Even Split)")
 end
